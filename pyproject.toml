@@ -4,13 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "count-de-benchmark"
-version = "0.1.0"
-description = "Lightweight RNA-seq differential expression with a simulation benchmark of power and FDR"
+version = "0.2.0"
+description = "Small-sample RNA-seq differential expression (empirical-Bayes moderated t-test) with a ground-truth simulation benchmark"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.24", "pandas>=2.0", "scipy>=1.10"]
 
 [project.optional-dependencies]
+figures = ["matplotlib>=3.7"]
 test = ["pytest"]
 
 [project.scripts]

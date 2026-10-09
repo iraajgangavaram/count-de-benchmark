@@ -1,0 +1,49 @@
+{
+  "dataset": "gse163877",
+  "n_genes_in_matrix": 58825,
+  "group_sizes": {
+    "Control": 4,
+    "Alzheimer's disease": 3
+  },
+  "reference": "Control",
+  "comparison": "Alzheimer's disease vs Control",
+  "min_total_count": 10,
+  "methods": {
+    "moderated": {
+      "genes_tested": 36105,
+      "raw_p_below_0.05": 1848,
+      "expected_by_chance_at_0.05": 1805.2,
+      "padj_below_0.10": 0,
+      "padj_below_0.05": 0,
+      "min_padj": 0.318,
+      "estimated_null_fraction_pi0": 0.96
+    },
+    "welch": {
+      "genes_tested": 36105,
+      "raw_p_below_0.05": 1339,
+      "expected_by_chance_at_0.05": 1805.2,
+      "padj_below_0.10": 0,
+      "padj_below_0.05": 0,
+      "min_padj": 0.9022,
+      "estimated_null_fraction_pi0": 0.985
+    },
+    "mannwhitney": {
+      "genes_tested": 36105,
+      "raw_p_below_0.05": 214,
+      "expected_by_chance_at_0.05": 1805.2,
+      "padj_below_0.10": 0,
+      "padj_below_0.05": 0,
+      "min_padj": 0.8688,
+      "estimated_null_fraction_pi0": 1.0
+    }
+  },
+  "moderated_prior_degrees_of_freedom": 7.3,
+  "comparison_with_original": {
+    "genes_compared": 36105,
+    "original_genes_with_p": 52291,
+    "spearman_log2fc": 0.996,
+    "spearman_neg_log10_p": 0.933,
+    "top100_overlap_by_p": 16,
+    "original_padj_non_missing": 0
+  }
+}

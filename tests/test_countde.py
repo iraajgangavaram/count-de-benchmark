@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 from countde import (
+    auc_from_pvalues,
     benjamini_hochberg,
     differential_expression,
     evaluate,
@@ -92,10 +93,12 @@ def _toy():
 
 def test_fold_change_direction_and_reference_flip():
     counts, groups = _toy()
-    res = differential_expression(counts, groups, min_total_count=0)
+    res = differential_expression(counts, groups, min_total_count=0, method="welch")
     assert res.loc["up", "log2_fold_change"] == pytest.approx(np.log2(403.33 / 102.0), abs=0.05)
     assert res.loc["up", "pvalue"] < 0.01
-    flipped = differential_expression(counts, groups, reference="B", min_total_count=0)
+    flipped = differential_expression(
+        counts, groups, reference="B", min_total_count=0, method="welch"
+    )
     assert flipped.loc["up", "log2_fold_change"] == pytest.approx(
         -res.loc["up", "log2_fold_change"], abs=1e-9
     )
@@ -103,7 +106,7 @@ def test_fold_change_direction_and_reference_flip():
 
 def test_constant_genes_get_p_of_one_not_nan():
     counts, groups = _toy()
-    res = differential_expression(counts, groups, min_total_count=0)
+    res = differential_expression(counts, groups, min_total_count=0, method="welch")
     assert res.loc["c1", "pvalue"] == 1.0
     assert not res.isna().any().any()
 
@@ -111,7 +114,7 @@ def test_constant_genes_get_p_of_one_not_nan():
 def test_low_count_filter_drops_genes():
     counts, groups = _toy()
     counts.loc["tiny"] = [1, 0, 1, 0, 1, 0]
-    res = differential_expression(counts, groups, min_total_count=10)
+    res = differential_expression(counts, groups, min_total_count=10, method="welch")
     assert "tiny" not in res.index and "up" in res.index
 
 
@@ -157,3 +160,68 @@ def test_simulation_is_reproducible_and_validates_inputs():
     assert a.is_de.sum() == 500
     with pytest.raises(ValueError):
         simulate_counts(frac_de=1.5)
+
+
+# ---------- method selection and ranking metrics ----------
+
+def test_unknown_method_rejected():
+    counts, groups = _toy()
+    with pytest.raises(ValueError):
+        differential_expression(counts, groups, method="deseq2")
+
+
+def test_mannwhitney_cannot_reach_below_p_0_1_with_three_per_group():
+    # Fully separated 3 vs 3 with no ties: exact two-sided p = 2 / C(6,3) = 0.1.
+    genes = {f"g{i}": [10 + i, 11 + i, 12 + i, 1000 + i, 1001 + i, 1002 + i] for i in range(20)}
+    counts = pd.DataFrame(genes, index=["A1", "A2", "A3", "B1", "B2", "B3"]).T
+    groups = pd.Series(["A"] * 3 + ["B"] * 3, index=counts.columns)
+    res = differential_expression(counts, groups, method="mannwhitney", min_total_count=0)
+    assert np.allclose(res["pvalue"], 0.1)
+    assert (res["padj"] >= 0.1 - 1e-12).all()
+
+
+def test_auc_extremes_and_ties():
+    truth = pd.Series([True, True, False, False], index=list("abcd"))
+    assert auc_from_pvalues(pd.Series([0.001, 0.01, 0.5, 0.9], index=truth.index), truth) == 1.0
+    assert auc_from_pvalues(pd.Series([0.9, 0.5, 0.01, 0.001], index=truth.index), truth) == 0.0
+    assert auc_from_pvalues(pd.Series([0.3] * 4, index=truth.index), truth) == 0.5
+
+
+def test_moderation_rescues_power_with_three_replicates():
+    """Headline claim of the benchmark: variance moderation matters most at small n."""
+    power = {}
+    for method in ("welch", "moderated"):
+        vals = []
+        for seed in (1, 2):
+            sim = simulate_counts(n_genes=5000, n_per_group=3, fold_change=4.0, seed=seed)
+            res = differential_expression(sim.counts, sim.groups, method=method)
+            m = evaluate(res, sim.is_de)
+            vals.append(m["power"])
+            if method == "moderated":
+                assert m["observed_fdr"] < 0.15  # nominal 0.05
+        power[method] = np.mean(vals)
+    assert power["welch"] < 0.1
+    assert power["moderated"] > 0.3
+
+
+@pytest.mark.parametrize("method", ["moderated", "welch", "mannwhitney"])
+def test_all_methods_calibrated_or_conservative_under_the_null(method):
+    sim = simulate_counts(n_genes=6000, n_per_group=6, frac_de=0.0, seed=9)
+    res = differential_expression(sim.counts, sim.groups, method=method)
+    assert (res["pvalue"] < 0.05).mean() < 0.07  # never anti-conservative
+
+
+# ---------- null-fraction estimate ----------
+
+def test_estimate_null_fraction_on_known_mixtures():
+    from countde import estimate_null_fraction
+
+    rng = np.random.default_rng(0)
+    uniform = rng.uniform(size=50000)
+    assert estimate_null_fraction(uniform) == pytest.approx(1.0, abs=0.03)
+    mixed = np.r_[rng.uniform(size=25000), rng.beta(0.1, 8.0, size=25000)]  # ~50% signal
+    assert estimate_null_fraction(mixed) == pytest.approx(0.5, abs=0.05)
+    with pytest.raises(ValueError):
+        estimate_null_fraction([])
+    with pytest.raises(ValueError):
+        estimate_null_fraction([0.1, 0.2], lam=1.0)
